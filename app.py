@@ -27,7 +27,7 @@ def check_password():
 
     if "password_correct" not in st.session_state:
         st.markdown("# 🔐 ACCESO RESTRINGIDO")
-        st.info("Unidad de Subcontratación - Invermar")
+        st.info("Departamento de Subcontratación - Invermar")
         st.text_input("Ingrese la Contraseña Corporativa", type="password", on_change=password_entered, key="password")
         return False
     elif not st.session_state["password_correct"]:
