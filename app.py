@@ -105,7 +105,7 @@ if check_password():
 
     # 3. INTERFAZ VISUAL
     st.markdown("# PORTAL DE GESTIÓN Y VALIDACIÓN DE DOCUMENTOS")
-    st.write("### 🏢 Herramienta para Decisiones Masivas en Pronexo")
+    st.write("### Herramienta de revisión de Certificados de cotizaciones previsionales")
     st.divider()
 
     archivos = st.file_uploader("Sube aquí los archivos PDF", accept_multiple_files=True, type=["pdf"])
