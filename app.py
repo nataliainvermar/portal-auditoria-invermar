@@ -6,7 +6,15 @@ from datetime import datetime
 
 # 1. CONFIGURACIÓN DE PÁGINA
 st.set_page_config(page_title="Portal de Gestión y Validación", layout="wide")
-
+# CÓDIGO PARA OCULTAR EL MENÚ Y EL BOTÓN DE GITHUB
+hide_st_style = """
+            <style>
+            #MainMenu {visibility: hidden;}
+            footer {visibility: hidden;}
+            header {visibility: hidden;}
+            </style>
+            """
+st.markdown(hide_st_style, unsafe_allow_html=True)
 # --- SISTEMA DE SEGURIDAD (LOGIN) ---
 def check_password():
     def password_entered():
