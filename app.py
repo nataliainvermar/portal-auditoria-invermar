@@ -5,7 +5,7 @@ import re
 from datetime import datetime
 
 # 1. CONFIGURACIÓN DE PÁGINA
-st.set_page_config(page_title="Portal de Gestión y Validación", layout="wide")
+st.set_page_config(page_title="Portal de Gestión y Validación", page_icon=":fish:", layout="wide")
 # CÓDIGO PARA OCULTAR EL MENÚ Y EL BOTÓN DE GITHUB
 hide_st_style = """
             <style>
@@ -105,7 +105,7 @@ if check_password():
 
     # 3. INTERFAZ VISUAL
     st.markdown("# PORTAL DE GESTIÓN Y VALIDACIÓN DE DOCUMENTOS")
-    st.write("### Herramienta de revisión de Certificados de cotizaciones previsionales")
+    st.write("### Herramienta de Revisión Masiva: Certificados de Cotizaciones Previsionales")
     st.divider()
 
     archivos = st.file_uploader("Sube aquí los archivos PDF", accept_multiple_files=True, type=["pdf"])
