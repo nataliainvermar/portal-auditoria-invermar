@@ -7,12 +7,15 @@ import zipfile
 import io
 
 # -----------------------------------------------------------------------------
-# 1. CONFIGURACIÓN DE PÁGINA (¡ESTO ES LO IMPORTANTE!)
-# Esta línea define el título de la pestaña y el ícono
+# 1. CONFIGURACIÓN DE PÁGINA (ESTO CONTROLA LA VISTA PREVIA DEL LINK)
 st.set_page_config(
-    page_title="Portal de Gestión y Validación",  # Título que sale en la pestaña y en el link
-    page_icon="🐟",                               # Ícono (pescadito)
-    layout="wide"                                 # Usa todo el ancho de la pantalla
+    page_title="Invermar | Auditoría de Cumplimiento", # Título que saldrá en WhatsApp
+    page_icon="✅",                                    # Ícono profesional (Check verde)
+    layout="wide",
+    initial_sidebar_state="collapsed",                 # Oculta la barra lateral al inicio (más limpio)
+    menu_items={
+        'About': "Portal de Validación Documental - Departamento de Subcontratación" # Descripción interna
+    }
 )
 # -----------------------------------------------------------------------------
 
