@@ -22,7 +22,6 @@ st.markdown(hide_st_style, unsafe_allow_html=True)
 # --- SISTEMA DE SEGURIDAD (LOGIN) ---
 def check_password():
     def password_entered():
-        # Tu clave corporativa para el equipo
         if st.session_state["password"] == "Invermar2026": 
             st.session_state["password_correct"] = True
             del st.session_state["password"]
@@ -43,7 +42,7 @@ def check_password():
 # --- TODO EL PORTAL DENTRO DEL IF ---
 if check_password():
 
-    # 2. MOTOR DE AUDITORÍA (MODIFICADO PARA ACEPTAR NOMBRE EXTERNO)
+    # 2. MOTOR DE AUDITORÍA (MODIFICADO PARA RUT Y ZIP)
     def analizar_pdf(archivo_pdf, nombre_archivo_real):
         try:
             with pdfplumber.open(archivo_pdf) as pdf:
@@ -55,15 +54,25 @@ if check_password():
                 
         texto_upper = texto_completo.upper()
         
-        # Extracción de nombres
+        # --- EXTRACCIÓN DE DATOS (NOMBRE Y RUT) ---
         trabajador = "NO DETECTADO"
+        rut_trabajador = "NO DETECTADO" # Nueva variable
+        
         if "SR.(A)" in texto_upper:
             try:
+                # Buscar nombre
                 inicio = texto_upper.find("SR.(A)") + 6
                 fin = texto_upper.find("RUT", inicio)
                 if fin != -1:
                     trabajador = texto_upper[inicio:fin].replace(":", "").strip()
-            except: trabajador = "ERROR"
+                    
+                    # Buscar RUT justo después del nombre
+                    segmento_post_nombre = texto_upper[fin:fin+30] # Miramos los 30 caracteres siguientes
+                    match_rut = re.search(r'(\d{1,2}\.?\d{3}\.?\d{3}-[\dkK])', segmento_post_nombre)
+                    if match_rut:
+                        rut_trabajador = match_rut.group(1)
+            except: 
+                trabajador = "ERROR"
 
         empleador = "NO DETECTADO"
         if "EMPLEADOR" in texto_upper:
@@ -100,6 +109,7 @@ if check_password():
         return {
             "ARCHIVO": nombre_archivo_real,
             "TRABAJADOR": trabajador,
+            "RUT": rut_trabajador, # Columna nueva
             "EMPLEADOR": empleador,
             "BASE IMPONIBLE": f"${imponible_valor:,}" if imponible_valor > 0 else "N/A",
             "ANÁLISIS MONTOS": revision_monto,
@@ -112,28 +122,22 @@ if check_password():
     st.write("### Herramienta de Revisión Masiva: Certificados de Cotizaciones Previsionales")
     st.divider()
 
-    # MODIFICADO: AHORA ACEPTA ZIP
     archivos = st.file_uploader("Sube aquí los archivos PDF o ZIP", accept_multiple_files=True, type=["pdf", "zip"])
 
     if archivos:
         if st.button("EJECUTAR AUDITORÍA MASIVA", use_container_width=True):
             datos = []
             
-            # NUEVA LÓGICA PARA PROCESAR ZIP O PDF
+            # LÓGICA MIXTA (PDF Y ZIP)
             for arc in archivos:
-                # Caso 1: Es un PDF normal
                 if arc.name.lower().endswith(".pdf"):
                     datos.append(analizar_pdf(arc, arc.name))
-                
-                # Caso 2: Es un archivo ZIP
                 elif arc.name.lower().endswith(".zip"):
                     try:
                         with zipfile.ZipFile(arc) as z:
                             for nombre_interno in z.namelist():
-                                # Solo procesamos si el archivo dentro del zip es un PDF
                                 if nombre_interno.lower().endswith(".pdf") and not nombre_interno.startswith("__MACOSX"):
                                     with z.open(nombre_interno) as archivo_zip:
-                                        # Leemos el PDF en memoria
                                         pdf_bytes = io.BytesIO(archivo_zip.read())
                                         datos.append(analizar_pdf(pdf_bytes, nombre_interno))
                     except:
@@ -142,7 +146,7 @@ if check_password():
             if datos:
                 df_detalle = pd.DataFrame(datos)
 
-                # TABLA 1: RESUMEN POR EMPRESA (Para Nicole y Jessica)
+                # TABLA 1: RESUMEN POR EMPRESA
                 st.subheader("📋 RESUMEN POR EMPRESA")
                 resumen = df_detalle.groupby("EMPLEADOR").agg(
                     Trabajadores=("TRABAJADOR", "count"),
@@ -154,7 +158,7 @@ if check_password():
 
                 st.divider()
 
-                # TABLA 2: DETALLE INDIVIDUAL
+                # TABLA 2: DETALLE INDIVIDUAL (Ahora con RUT)
                 st.subheader("🔍 DETALLE INDIVIDUAL")
                 st.dataframe(df_detalle, use_container_width=True, hide_index=True)
                 
