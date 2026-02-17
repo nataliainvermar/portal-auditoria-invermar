@@ -1,4 +1,4 @@
-¿import streamlit as st
+import streamlit as st
 import pandas as pd
 import pdfplumber
 import re
@@ -179,3 +179,67 @@ if check_password():
                         
                         # --- EL CRUCE MAESTRO (LEFT JOIN) ---
                         # Unimos la Nómina (Izquierda) con los PDFs encontrados (Derecha) usando el RUT
+                        df_final = pd.merge(df_nomina, df_pdfs, on='RUT_CLEAN', how='left')
+
+                        # Definir Estado Final
+                        def definir_estado(row):
+                            if pd.isna(row['ESTADO_PDF']): # No cruzó (no se encontró PDF)
+                                return "⚠️ FALTANTE"
+                            elif row['ESTADO_PDF'] == "VALIDADO":
+                                return "✅ OK"
+                            else:
+                                return "❌ RECHAZADO"
+
+                        df_final['ESTADO_FINAL'] = df_final.apply(definir_estado, axis=1)
+
+                        # --- MOSTRAR RESULTADOS ORDENADOS POR EMPRESA ---
+                        st.subheader("📊 CRUCE CONTRA NÓMINA (Resultados por Empresa)")
+                        
+                        empresas = df_final['Contratista'].unique()
+                        
+                        for emp in empresas:
+                            if pd.isna(emp): continue
+                            
+                            st.markdown(f"#### 🏢 {emp}")
+                            df_emp = df_final[df_final['Contratista'] == emp]
+                            
+                            # Métricas de la empresa
+                            total = len(df_emp)
+                            ok = len(df_emp[df_emp['ESTADO_FINAL'] == "✅ OK"])
+                            faltantes = len(df_emp[df_emp['ESTADO_FINAL'] == "⚠️ FALTANTE"])
+                            rechazados = len(df_emp[df_emp['ESTADO_FINAL'] == "❌ RECHAZADO"])
+                            
+                            col_m1, col_m2, col_m3 = st.columns(3)
+                            col_m1.metric("Dotación Nómina", total)
+                            col_m2.metric("Documentados OK", ok)
+                            col_m3.metric("Faltantes", faltantes, delta_color="inverse")
+
+                            # Tabla detalle de la empresa
+                            cols_visual = ['Nombre', 'Apellidos', 'Rut', 'ESTADO_FINAL', 'OBSERVACIONES', 'ARCHIVO']
+                            st.dataframe(df_emp[cols_visual].fillna("-"), use_container_width=True, hide_index=True)
+                            st.divider()
+
+                        # Botón descarga consolidado
+                        csv_final = df_final.to_csv(index=False).encode('utf-8-sig')
+                        st.download_button("📥 DESCARGAR REPORTE CONSOLIDADO (CRUCE)", data=csv_final, file_name="Reporte_Cruce_Invermar.csv")
+
+                    else:
+                        st.error("El archivo de nómina no tiene las columnas 'Rut' o 'Contratista'. Verifique el formato.")
+                except Exception as e:
+                    st.error(f"Error al procesar la nómina: {e}")
+
+            # 3. SI NO HAY NÓMINA (MUESTRA SOLO LO QUE SE SUBIÓ)
+            else:
+                st.subheader("📋 RESULTADOS DE AUDITORÍA (Solo archivos subidos)")
+                if not df_pdfs.empty:
+                    st.dataframe(df_pdfs.drop(columns=['RUT_CLEAN'], errors='ignore'), use_container_width=True)
+                    csv = df_pdfs.to_csv(index=False).encode('utf-8-sig')
+                    st.download_button("📥 DESCARGAR REPORTE SIMPLE", data=csv, file_name="Auditoria_Simple.csv")
+                else:
+                    st.warning("No se encontraron datos en los archivos.")
+
+    with st.sidebar:
+        st.write(f"Fecha: {datetime.now().strftime('%d/%m/%Y')}")
+        if st.button("Cerrar Sesión"):
+            st.session_state["password_correct"] = False
+            st.rerun()
