@@ -6,8 +6,25 @@ from datetime import datetime
 import zipfile
 import io
 
-# 1. CONFIGURACIÓN DE PÁGINA
-st.set_page_config(page_title="Portal de Gestión y Validación", page_icon="🐟", layout="wide")
+# -----------------------------------------------------------------------------
+# 1. CONFIGURACIÓN DE PÁGINA (¡ESTO ES LO IMPORTANTE!)
+# Esta línea define el título de la pestaña y el ícono
+st.set_page_config(
+    page_title="Portal de Gestión y Validación",  # Título que sale en la pestaña y en el link
+    page_icon="🐟",                               # Ícono (pescadito)
+    layout="wide"                                 # Usa todo el ancho de la pantalla
+)
+# -----------------------------------------------------------------------------
+
+# CÓDIGO PARA OCULTAR EL MENÚ Y EL BOTÓN DE GITHUB (Sigue igual)
+hide_st_style = """
+            <style>
+            #MainMenu {visibility: hidden;}
+            footer {visibility: hidden;}
+            header {visibility: hidden;}
+            </style>
+            """
+st.markdown(hide_st_style, unsafe_allow_html=True)
 
 # ESTILOS (Ocultar menú)
 hide_st_style = """
