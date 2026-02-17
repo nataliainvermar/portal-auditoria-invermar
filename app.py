@@ -9,7 +9,7 @@ import io
 # -----------------------------------------------------------------------------
 # 1. CONFIGURACIÓN DE PÁGINA (ESTO CONTROLA LA VISTA PREVIA DEL LINK)
 st.set_page_config(
-    page_title="Invermar | Auditoría de Cumplimiento", # Título que saldrá en WhatsApp
+    page_title="Invermar | Validador", # Título que saldrá en WhatsApp
     page_icon="✅",                                    # Ícono profesional (Check verde)
     layout="wide",
     initial_sidebar_state="collapsed",                 # Oculta la barra lateral al inicio (más limpio)
