@@ -42,7 +42,7 @@ def check_password():
 # --- TODO EL PORTAL DENTRO DEL IF ---
 if check_password():
 
-    # 2. MOTOR DE AUDITORÍA (MODIFICADO PARA RUT Y ZIP)
+    # 2. MOTOR DE AUDITORÍA
     def analizar_pdf(archivo_pdf, nombre_archivo_real):
         try:
             with pdfplumber.open(archivo_pdf) as pdf:
@@ -54,49 +54,41 @@ if check_password():
                 
         texto_upper = texto_completo.upper()
         
-        # --- EXTRACCIÓN DE DATOS (NOMBRE Y RUT) ---
+        # --- EXTRACCIÓN DE DATOS ---
         trabajador = "NO DETECTADO"
-        rut_trabajador = "NO DETECTADO" # Nueva variable
+        rut_trabajador = "NO DETECTADO"
         
         if "SR.(A)" in texto_upper:
             try:
-                # Buscar nombre
                 inicio = texto_upper.find("SR.(A)") + 6
                 fin = texto_upper.find("RUT", inicio)
                 if fin != -1:
                     trabajador = texto_upper[inicio:fin].replace(":", "").strip()
-                    
-                    # Buscar RUT justo después del nombre
-                    segmento_post_nombre = texto_upper[fin:fin+30] # Miramos los 30 caracteres siguientes
-                    match_rut = re.search(r'(\d{1,2}\.?\d{3}\.?\d{3}-[\dkK])', segmento_post_nombre)
-                    if match_rut:
-                        rut_trabajador = match_rut.group(1)
-            except: 
-                trabajador = "ERROR"
+                    # Buscar RUT
+                    segmento = texto_upper[fin:fin+30]
+                    match = re.search(r'(\d{1,2}\.?\d{3}\.?\d{3}-[\dkK])', segmento)
+                    if match: rut_trabajador = match.group(1)
+            except: trabajador = "ERROR"
 
         empleador = "NO DETECTADO"
         if "EMPLEADOR" in texto_upper:
             try:
                 inicio = texto_upper.find("EMPLEADOR") + 10
                 fin = texto_upper.find("RUT", inicio)
-                if fin != -1:
-                    empleador = texto_upper[inicio:fin].replace(":", "").strip()
+                if fin != -1: empleador = texto_upper[inicio:fin].replace(":", "").strip()
             except: empleador = "ERROR"
 
-        # Auditoría de Montos (Ley Chilena: AFP ~11.5%, Salud 7%)
         imponible_valor = 0
         try:
             montos = re.findall(r'\$\s*(\d+\.?\d+\.?\d+)', texto_upper)
-            if not montos:
-                montos = re.findall(r'IMPONIBLE\s*(\d+\.?\d+\.?\d+)', texto_upper)
+            if not montos: montos = re.findall(r'IMPONIBLE\s*(\d+\.?\d+\.?\d+)', texto_upper)
             for m in montos:
                 valor = int(m.replace(".", ""))
-                if valor > 400000: # Filtro para identificar sueldos
+                if valor > 400000:
                     imponible_valor = valor
                     break
         except: imponible_valor = 0
 
-        # Verificación de parámetros
         faltas = []
         if not any(x in texto_upper for x in ["PROVIDA", "MODELO", "HABITAT", "CUPRUM", "COTIZACION"]): faltas.append("AFP")
         if "FONASA" not in texto_upper and "ISAPRE" not in texto_upper: faltas.append("SALUD")
@@ -109,7 +101,7 @@ if check_password():
         return {
             "ARCHIVO": nombre_archivo_real,
             "TRABAJADOR": trabajador,
-            "RUT": rut_trabajador, # Columna nueva
+            "RUT": rut_trabajador,
             "EMPLEADOR": empleador,
             "BASE IMPONIBLE": f"${imponible_valor:,}" if imponible_valor > 0 else "N/A",
             "ANÁLISIS MONTOS": revision_monto,
@@ -128,7 +120,6 @@ if check_password():
         if st.button("EJECUTAR AUDITORÍA MASIVA", use_container_width=True):
             datos = []
             
-            # LÓGICA MIXTA (PDF Y ZIP)
             for arc in archivos:
                 if arc.name.lower().endswith(".pdf"):
                     datos.append(analizar_pdf(arc, arc.name))
@@ -141,12 +132,12 @@ if check_password():
                                         pdf_bytes = io.BytesIO(archivo_zip.read())
                                         datos.append(analizar_pdf(pdf_bytes, nombre_interno))
                     except:
-                        st.error(f"Error al leer el archivo ZIP: {arc.name}")
+                        st.error(f"Error al leer ZIP: {arc.name}")
 
             if datos:
                 df_detalle = pd.DataFrame(datos)
 
-                # TABLA 1: RESUMEN POR EMPRESA
+                # TABLA 1: RESUMEN
                 st.subheader("📋 RESUMEN POR EMPRESA")
                 resumen = df_detalle.groupby("EMPLEADOR").agg(
                     Trabajadores=("TRABAJADOR", "count"),
@@ -158,7 +149,7 @@ if check_password():
 
                 st.divider()
 
-                # TABLA 2: DETALLE INDIVIDUAL (Ahora con RUT)
+                # TABLA 2: DETALLE
                 st.subheader("🔍 DETALLE INDIVIDUAL")
                 st.dataframe(df_detalle, use_container_width=True, hide_index=True)
                 
@@ -166,7 +157,7 @@ if check_password():
                 csv = df_detalle.to_csv(index=False).encode('utf-8')
                 st.download_button("📥 DESCARGAR REPORTE EXCEL", data=csv, file_name="Auditoria_Invermar.csv")
             else:
-                st.warning("No se encontraron archivos PDF válidos para procesar.")
+                st.warning("No se encontraron archivos PDF válidos.")
 
     with st.sidebar:
         st.write(f"Fecha: {datetime.now().strftime('%d/%m/%Y')}")
