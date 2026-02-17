@@ -48,7 +48,7 @@ def check_password():
 # --- MOTOR PRINCIPAL ---
 if check_password():
 
-    # Lógica de análisis de PDF
+    # Lógica de análisis de PDF (RECUPERADO EL FORMATO ORIGINAL)
     def analizar_pdf(archivo_bytes, nombre_archivo_real):
         try:
             with pdfplumber.open(io.BytesIO(archivo_bytes)) as pdf:
@@ -102,18 +102,21 @@ if check_password():
         if "ACHS" not in texto_upper and "MUTUAL" not in texto_upper: faltas.append("MUTUAL")
         
         estado = "VALIDADO" if len(faltas) == 0 else "RECHAZADO"
+        # Recuperamos esta columna que te gustaba
+        revision_monto = "RAZONABLE" if (imponible_valor > 0 and estado == "VALIDADO") else "VERIFICAR"
 
         return {
             "ARCHIVO": nombre_archivo_real,
             "TRABAJADOR_PDF": trabajador,
             "RUT_PDF": rut_pdf,
             "EMPLEADOR_PDF": empleador,
-            "MONTO": f"${imponible_valor:,}" if imponible_valor > 0 else "N/A",
+            "BASE IMPONIBLE": f"${imponible_valor:,}" if imponible_valor > 0 else "N/A",
+            "ANÁLISIS MONTOS": revision_monto,
             "ESTADO_PDF": estado,
             "OBSERVACIONES": "CUMPLIMIENTO TOTAL" if estado == "VALIDADO" else f"FALTA: {', '.join(faltas)}"
         }
 
-    # --- INTERFAZ VISUAL (MANTENIDA EXACTAMENTE IGUAL) ---
+    # --- INTERFAZ VISUAL ---
     st.markdown("# PORTAL DE GESTIÓN Y VALIDACIÓN DE DOCUMENTOS")
     st.write("### 🏢 Control Maestro: Nómina vs Respaldos")
     st.divider()
@@ -125,13 +128,13 @@ if check_password():
         archivo_nomina = st.file_uploader("Subir archivo de Trabajadores", type=["xlsx", "csv"])
 
     with col2:
-        st.info("📄 **PASO 2:** Cargar Cotizaciones (PDFs/ZIP)")
+        st.info("📄 **PASO 2:** Cargar Respaldos (PDFs/ZIP)")
         archivos_respaldos = st.file_uploader("Subir Liquidaciones", accept_multiple_files=True, type=["pdf", "zip"])
 
     st.divider()
 
     # --- BOTÓN DE EJECUCIÓN ---
-    if st.button("EJECUTAR CRUCE DE INFORMACIÓN", use_container_width=True):
+    if st.button("🚀 EJECUTAR CRUCE DE INFORMACIÓN", use_container_width=True):
         
         if not archivo_nomina or not archivos_respaldos:
             st.warning("⚠️ Por favor, sube AMBOS archivos (Nómina y PDFs) para hacer el cruce.")
@@ -187,41 +190,58 @@ if check_password():
 
             df_final['ESTADO_FINAL'] = df_final.apply(definir_estado, axis=1)
 
-            # 4. MOSTRAR RESULTADOS (FILTRADO POR EMPRESAS CARGADAS)
+            # 4. MOSTRAR RESULTADOS
             st.success("✅ Cruce finalizado con éxito")
             
-            # FILTRO INTELIGENTE: Detectamos qué empresas tuvieron al menos 1 coincidencia en el PDF
-            # Si una empresa no tiene NINGÚN dato en las columnas del PDF, no la mostramos.
+            # FILTRO: Solo empresas involucradas en la subida actual
             empresas_activas = df_final[df_final['ESTADO_PDF'].notna()]['Contratista'].unique()
             
             if len(empresas_activas) == 0:
-                st.warning("⚠️ Se procesaron los archivos, pero no hubo coincidencia de RUT con ninguna empresa de la nómina. Verifica que los RUTs en los PDF sean legibles.")
-            
-            for emp in empresas_activas:
-                if pd.isna(emp): continue
-                
-                # TITULO POR EMPRESA
-                st.markdown(f"### 🏢 {emp}")
-                
-                # Mostramos TODOS los trabajadores de esa empresa (Faltantes + OK)
-                df_emp = df_final[df_final['Contratista'] == emp]
-                
-                col1, col2, col3 = st.columns(3)
-                total = len(df_emp)
-                ok = len(df_emp[df_emp['ESTADO_FINAL'] == "✅ OK"])
-                faltantes_recha = len(df_emp[df_emp['ESTADO_FINAL'] != "✅ OK"])
-                
-                col1.metric("Dotación Nómina", total)
-                col2.metric("Documentación OK", ok)
-                col3.metric("Faltantes / Rechazados", faltantes_recha, delta_color="inverse")
+                st.warning("⚠️ Se procesaron los archivos, pero no hubo coincidencia con la nómina.")
+            else:
+                # Filtrar el DataFrame Principal para mostrar solo las empresas activas
+                df_filtrado = df_final[df_final['Contratista'].isin(empresas_activas)].copy()
 
-                columnas_visual = ['Rut', 'Apellidos', 'Nombre', 'Cargo', 'ESTADO_FINAL', 'OBSERVACIONES', 'ARCHIVO']
-                st.dataframe(df_emp[columnas_visual].fillna("-"), use_container_width=True, hide_index=True)
-                st.divider()
+                # --- RESUMEN DE MÉTRICAS (Arriba) ---
+                st.subheader("📋 RESUMEN POR EMPRESA")
+                for emp in empresas_activas:
+                    if pd.isna(emp): continue
+                    
+                    df_emp = df_filtrado[df_filtrado['Contratista'] == emp]
+                    
+                    st.markdown(f"**🏢 {emp}**")
+                    c1, c2, c3 = st.columns(3)
+                    c1.metric("Dotación", len(df_emp))
+                    c2.metric("OK", len(df_emp[df_emp['ESTADO_FINAL'] == "✅ OK"]))
+                    c3.metric("Faltan/Rechazo", len(df_emp[df_emp['ESTADO_FINAL'] != "✅ OK"]), delta_color="inverse")
+                    st.divider()
 
-            # Descarga sigue siendo del consolidado total (por si acaso quieren ver todo)
-            csv = df_final.to_csv(index=False).encode('utf-8-sig')
-            st.download_button("📥 DESCARGAR INFORME COMPLETO (Excel)", data=csv, file_name="Informe_Cumplimiento_Invermar.csv")
+                # --- EL DETALLE INDIVIDUAL (LO QUE FALTABA) ---
+                st.subheader("🔍 DETALLE INDIVIDUAL COMPLETO")
+                st.info("Lista consolidada de trabajadores de las empresas procesadas.")
+                
+                # Seleccionamos y renombramos columnas para que se vea ordenado
+                columnas_finales = {
+                    'Rut': 'RUT',
+                    'Apellidos': 'APELLIDOS',
+                    'Nombre': 'NOMBRES',
+                    'Contratista': 'EMPRESA',
+                    'ESTADO_FINAL': 'ESTADO',
+                    'BASE IMPONIBLE': 'RENTA IMP.',
+                    'ANÁLISIS MONTOS': 'ANÁLISIS',
+                    'OBSERVACIONES': 'OBSERVACIONES',
+                    'ARCHIVO': 'ARCHIVO'
+                }
+                
+                # Mostramos la tabla con las columnas que existen
+                cols_a_mostrar = [c for c in columnas_finales.keys() if c in df_filtrado.columns]
+                df_display = df_filtrado[cols_a_mostrar].rename(columns=columnas_finales).fillna("-")
+                
+                st.dataframe(df_display, use_container_width=True, hide_index=True)
+
+                # Descarga
+                csv = df_display.to_csv(index=False).encode('utf-8-sig')
+                st.download_button("📥 DESCARGAR REPORTE EXCEL", data=csv, file_name="Auditoria_Consolidada.csv")
 
     with st.sidebar:
         st.write(f"Fecha: {datetime.now().strftime('%d/%m/%Y')}")
