@@ -140,7 +140,7 @@ if check_password():
 
     # --- INTERFAZ VISUAL ---
     st.markdown("# PORTAL DE GESTIÓN Y VALIDACIÓN DE DOCUMENTOS")
-    st.write("### 🏢 Control Maestro: Nómina vs Respaldos")
+    st.write("### Panel de Control de Subcontratación")
     st.divider()
 
     col1, col2 = st.columns(2)
