@@ -125,13 +125,13 @@ if check_password():
         archivo_nomina = st.file_uploader("Subir archivo de Trabajadores", type=["xlsx", "csv"])
 
     with col2:
-        st.info("📄 **PASO 2:** Cargar Respaldos (PDFs/ZIP)")
+        st.info("📄 **PASO 2:** Cargar Cotizaciones (PDFs/ZIP)")
         archivos_respaldos = st.file_uploader("Subir Liquidaciones", accept_multiple_files=True, type=["pdf", "zip"])
 
     st.divider()
 
     # --- BOTÓN DE EJECUCIÓN ---
-    if st.button("🚀 EJECUTAR CRUCE DE INFORMACIÓN", use_container_width=True):
+    if st.button("EJECUTAR CRUCE DE INFORMACIÓN", use_container_width=True):
         
         if not archivo_nomina or not archivos_respaldos:
             st.warning("⚠️ Por favor, sube AMBOS archivos (Nómina y PDFs) para hacer el cruce.")
