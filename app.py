@@ -209,4 +209,18 @@ if check_password():
             
             with col1:
                 st.success("✅ DATOS DETECTADOS") if datos_trabajador['ESTADO'] == 'VALIDADO' else st.error("❌ RECHAZADO")
-                st.write(f"**Trabajador
+                st.write(f"**Trabajador:** {datos_trabajador['TRABAJADOR']}")
+                st.write(f"**RUT:** {datos_trabajador['RUT']}")
+                st.write(f"**Monto Imponible:** {datos_trabajador['BASE IMPONIBLE']}")
+                st.write(f"**Observación:** {datos_trabajador['OBSERVACIONES']}")
+            
+            with col2:
+                st.write("📄 **Vista Previa del PDF:**")
+                bytes_pdf = st.session_state["archivos_pdf_bytes"][seleccion]
+                mostrar_pdf_iframe(bytes_pdf)
+
+    with st.sidebar:
+        st.write(f"Fecha: {datetime.now().strftime('%d/%m/%Y')}")
+        if st.button("Cerrar Sesión"):
+            st.session_state["password_correct"] = False
+            st.rerun()
