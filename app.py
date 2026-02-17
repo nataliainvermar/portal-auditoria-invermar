@@ -3,9 +3,12 @@ import pandas as pd
 import pdfplumber
 import re
 from datetime import datetime
+import zipfile
+import io
 
 # 1. CONFIGURACIÓN DE PÁGINA
 st.set_page_config(page_title="Portal de Gestión y Validación", page_icon=":fish:", layout="wide")
+
 # CÓDIGO PARA OCULTAR EL MENÚ Y EL BOTÓN DE GITHUB
 hide_st_style = """
             <style>
@@ -15,6 +18,7 @@ hide_st_style = """
             </style>
             """
 st.markdown(hide_st_style, unsafe_allow_html=True)
+
 # --- SISTEMA DE SEGURIDAD (LOGIN) ---
 def check_password():
     def password_entered():
@@ -39,15 +43,15 @@ def check_password():
 # --- TODO EL PORTAL DENTRO DEL IF ---
 if check_password():
 
-    # 2. MOTOR DE AUDITORÍA
-    def analizar_pdf(archivo_pdf):
+    # 2. MOTOR DE AUDITORÍA (MODIFICADO PARA ACEPTAR NOMBRE EXTERNO)
+    def analizar_pdf(archivo_pdf, nombre_archivo_real):
         try:
             with pdfplumber.open(archivo_pdf) as pdf:
                 texto_completo = ""
                 for pagina in pdf.pages:
                     texto_completo += pagina.extract_text() or ""
         except:
-            return {"ARCHIVO": archivo_pdf.name, "ESTADO": "ERROR", "OBSERVACIONES": "Ilegible"}
+            return {"ARCHIVO": nombre_archivo_real, "ESTADO": "ERROR", "OBSERVACIONES": "Ilegible"}
                 
         texto_upper = texto_completo.upper()
         
@@ -94,7 +98,7 @@ if check_password():
         revision_monto = "RAZONABLE (CUMPLE % LEGAL)" if (imponible_valor > 0 and estado == "VALIDADO") else "VERIFICAR"
 
         return {
-            "ARCHIVO": archivo_pdf.name,
+            "ARCHIVO": nombre_archivo_real,
             "TRABAJADOR": trabajador,
             "EMPLEADOR": empleador,
             "BASE IMPONIBLE": f"${imponible_valor:,}" if imponible_valor > 0 else "N/A",
@@ -108,32 +112,57 @@ if check_password():
     st.write("### Herramienta de Revisión Masiva: Certificados de Cotizaciones Previsionales")
     st.divider()
 
-    archivos = st.file_uploader("Sube aquí los archivos PDF", accept_multiple_files=True, type=["pdf"])
+    # MODIFICADO: AHORA ACEPTA ZIP
+    archivos = st.file_uploader("Sube aquí los archivos PDF o ZIP", accept_multiple_files=True, type=["pdf", "zip"])
 
     if archivos:
         if st.button("EJECUTAR AUDITORÍA MASIVA", use_container_width=True):
-            datos = [analizar_pdf(arc) for arc in archivos]
-            df_detalle = pd.DataFrame(datos)
-
-            # TABLA 1: RESUMEN POR EMPRESA (Para Nicole y Jessica)
-            st.subheader("📋 RESUMEN POR EMPRESA")
-            resumen = df_detalle.groupby("EMPLEADOR").agg(
-                Trabajadores=("TRABAJADOR", "count"),
-                Aprobados=("ESTADO", lambda x: (x == "VALIDADO").sum()),
-                Rechazados=("ESTADO", lambda x: (x == "RECHAZADO").sum()),
-                Quien_Falla=("TRABAJADOR", lambda x: ", ".join(df_detalle[(df_detalle['EMPLEADOR'] == x.name) & (df_detalle['ESTADO'] == 'RECHAZADO')]['TRABAJADOR']))
-            ).reset_index()
-            st.dataframe(resumen, use_container_width=True, hide_index=True)
-
-            st.divider()
-
-            # TABLA 2: DETALLE INDIVIDUAL
-            st.subheader("🔍 DETALLE INDIVIDUAL")
-            st.dataframe(df_detalle, use_container_width=True, hide_index=True)
+            datos = []
             
-            # Exportación
-            csv = df_detalle.to_csv(index=False).encode('utf-8')
-            st.download_button("📥 DESCARGAR REPORTE EXCEL", data=csv, file_name="Auditoria_Invermar.csv")
+            # NUEVA LÓGICA PARA PROCESAR ZIP O PDF
+            for arc in archivos:
+                # Caso 1: Es un PDF normal
+                if arc.name.lower().endswith(".pdf"):
+                    datos.append(analizar_pdf(arc, arc.name))
+                
+                # Caso 2: Es un archivo ZIP
+                elif arc.name.lower().endswith(".zip"):
+                    try:
+                        with zipfile.ZipFile(arc) as z:
+                            for nombre_interno in z.namelist():
+                                # Solo procesamos si el archivo dentro del zip es un PDF
+                                if nombre_interno.lower().endswith(".pdf") and not nombre_interno.startswith("__MACOSX"):
+                                    with z.open(nombre_interno) as archivo_zip:
+                                        # Leemos el PDF en memoria
+                                        pdf_bytes = io.BytesIO(archivo_zip.read())
+                                        datos.append(analizar_pdf(pdf_bytes, nombre_interno))
+                    except:
+                        st.error(f"Error al leer el archivo ZIP: {arc.name}")
+
+            if datos:
+                df_detalle = pd.DataFrame(datos)
+
+                # TABLA 1: RESUMEN POR EMPRESA (Para Nicole y Jessica)
+                st.subheader("📋 RESUMEN POR EMPRESA")
+                resumen = df_detalle.groupby("EMPLEADOR").agg(
+                    Trabajadores=("TRABAJADOR", "count"),
+                    Aprobados=("ESTADO", lambda x: (x == "VALIDADO").sum()),
+                    Rechazados=("ESTADO", lambda x: (x == "RECHAZADO").sum()),
+                    Quien_Falla=("TRABAJADOR", lambda x: ", ".join(df_detalle[(df_detalle['EMPLEADOR'] == x.name) & (df_detalle['ESTADO'] == 'RECHAZADO')]['TRABAJADOR']))
+                ).reset_index()
+                st.dataframe(resumen, use_container_width=True, hide_index=True)
+
+                st.divider()
+
+                # TABLA 2: DETALLE INDIVIDUAL
+                st.subheader("🔍 DETALLE INDIVIDUAL")
+                st.dataframe(df_detalle, use_container_width=True, hide_index=True)
+                
+                # Exportación
+                csv = df_detalle.to_csv(index=False).encode('utf-8')
+                st.download_button("📥 DESCARGAR REPORTE EXCEL", data=csv, file_name="Auditoria_Invermar.csv")
+            else:
+                st.warning("No se encontraron archivos PDF válidos para procesar.")
 
     with st.sidebar:
         st.write(f"Fecha: {datetime.now().strftime('%d/%m/%Y')}")
