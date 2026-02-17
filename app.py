@@ -150,7 +150,7 @@ if check_password():
         archivo_nomina = st.file_uploader("Subir archivo de Trabajadores", type=["xlsx", "csv"])
 
     with col2:
-        st.info("📄 **PASO 2:** Cargar Respaldos (PDFs/ZIP)")
+        st.info("📄 **PASO 2:** Cargar Cotizaciones (PDFs/ZIP)")
         archivos_respaldos = st.file_uploader("Subir Liquidaciones", accept_multiple_files=True, type=["pdf", "zip"])
 
     st.divider()
