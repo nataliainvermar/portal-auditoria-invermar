@@ -21,7 +21,6 @@ st.markdown(hide_st_style, unsafe_allow_html=True)
 
 # --- FUNCIÓN DE LIMPIEZA DE RUT ---
 def limpiar_rut(rut):
-    """Deja el RUT solo con números y K para poder comparar."""
     if pd.isna(rut): return ""
     return str(rut).replace(".", "").replace(" ", "").upper().strip()
 
@@ -48,7 +47,7 @@ def check_password():
 # --- MOTOR PRINCIPAL ---
 if check_password():
 
-    # Lógica de análisis de PDF (RECUPERADO EL FORMATO ORIGINAL)
+    # Lógica de análisis de PDF
     def analizar_pdf(archivo_bytes, nombre_archivo_real):
         try:
             with pdfplumber.open(io.BytesIO(archivo_bytes)) as pdf:
@@ -56,11 +55,14 @@ if check_password():
                 for pagina in pdf.pages:
                     texto_completo += pagina.extract_text() or ""
         except:
-            return {"ARCHIVO": nombre_archivo_real, "ESTADO_PDF": "ERROR", "OBSERVACIONES": "Ilegible", "RUT_PDF": ""}
+            return {
+                "ARCHIVO": nombre_archivo_real, "ESTADO_PDF": "ERROR", "OBSERVACIONES": "Ilegible", "RUT_PDF": "",
+                "CHECK_AFP": "❓", "CHECK_SALUD": "❓", "CHECK_AFC": "❓", "CHECK_MUTUAL": "❓"
+            }
                 
         texto_upper = texto_completo.upper()
         
-        # Extracción de Datos
+        # Extracción de Datos Básicos
         trabajador = "NO DETECTADO"
         rut_pdf = ""
         
@@ -70,7 +72,6 @@ if check_password():
                 fin = texto_upper.find("RUT", inicio)
                 if fin != -1:
                     trabajador = texto_upper[inicio:fin].replace(":", "").strip()
-                    # Buscar RUT
                     segmento = texto_upper[fin:fin+30]
                     match = re.search(r'(\d{1,2}\.?\d{3}\.?\d{3}-[\dkK])', segmento)
                     if match: rut_pdf = match.group(1)
@@ -95,14 +96,31 @@ if check_password():
                     break
         except: pass
 
-        faltas = []
-        if not any(x in texto_upper for x in ["PROVIDA", "MODELO", "HABITAT", "CUPRUM", "COTIZACION"]): faltas.append("AFP")
-        if "FONASA" not in texto_upper and "ISAPRE" not in texto_upper: faltas.append("SALUD")
-        if "AFC" not in texto_upper and "CESANTIA" not in texto_upper: faltas.append("SEGURO")
-        if "ACHS" not in texto_upper and "MUTUAL" not in texto_upper: faltas.append("MUTUAL")
+        # --- VERIFICACIÓN VISUAL (LOS CHECKS) ---
+        # 1. AFP
+        tiene_afp = any(x in texto_upper for x in ["PROVIDA", "MODELO", "HABITAT", "CUPRUM", "COTIZACION", "UNO"])
+        icon_afp = "✅" if tiene_afp else "❌"
+
+        # 2. SALUD
+        tiene_salud = "FONASA" in texto_upper or "ISAPRE" in texto_upper
+        icon_salud = "✅" if tiene_salud else "❌"
+
+        # 3. AFC (Seguro Cesantía)
+        tiene_afc = "AFC" in texto_upper or "CESANTIA" in texto_upper
+        icon_afc = "✅" if tiene_afc else "❌"
+
+        # 4. MUTUAL (Seguro Accidentes)
+        tiene_mutual = "ACHS" in texto_upper or "MUTUAL" in texto_upper or "ISL" in texto_upper
+        icon_mutual = "✅" if tiene_mutual else "❌"
         
+        # Estado General
+        faltas = []
+        if not tiene_afp: faltas.append("AFP")
+        if not tiene_salud: faltas.append("SALUD")
+        if not tiene_afc: faltas.append("SEGURO")
+        if not tiene_mutual: faltas.append("MUTUAL")
+
         estado = "VALIDADO" if len(faltas) == 0 else "RECHAZADO"
-        # Recuperamos esta columna que te gustaba
         revision_monto = "RAZONABLE" if (imponible_valor > 0 and estado == "VALIDADO") else "VERIFICAR"
 
         return {
@@ -113,7 +131,11 @@ if check_password():
             "BASE IMPONIBLE": f"${imponible_valor:,}" if imponible_valor > 0 else "N/A",
             "ANÁLISIS MONTOS": revision_monto,
             "ESTADO_PDF": estado,
-            "OBSERVACIONES": "CUMPLIMIENTO TOTAL" if estado == "VALIDADO" else f"FALTA: {', '.join(faltas)}"
+            "CHECK_AFP": icon_afp,
+            "CHECK_SALUD": icon_salud,
+            "CHECK_AFC": icon_afc,
+            "CHECK_MUTUAL": icon_mutual,
+            "OBSERVACIONES": "OK" if estado == "VALIDADO" else f"FALTA: {', '.join(faltas)}"
         }
 
     # --- INTERFAZ VISUAL ---
@@ -193,22 +215,19 @@ if check_password():
             # 4. MOSTRAR RESULTADOS
             st.success("✅ Cruce finalizado con éxito")
             
-            # FILTRO: Solo empresas involucradas en la subida actual
             empresas_activas = df_final[df_final['ESTADO_PDF'].notna()]['Contratista'].unique()
             
             if len(empresas_activas) == 0:
                 st.warning("⚠️ Se procesaron los archivos, pero no hubo coincidencia con la nómina.")
             else:
-                # Filtrar el DataFrame Principal para mostrar solo las empresas activas
                 df_filtrado = df_final[df_final['Contratista'].isin(empresas_activas)].copy()
 
-                # --- RESUMEN DE MÉTRICAS (Arriba) ---
+                # --- RESUMEN (Métricas) ---
                 st.subheader("📋 RESUMEN POR EMPRESA")
                 for emp in empresas_activas:
                     if pd.isna(emp): continue
                     
                     df_emp = df_filtrado[df_filtrado['Contratista'] == emp]
-                    
                     st.markdown(f"**🏢 {emp}**")
                     c1, c2, c3 = st.columns(3)
                     c1.metric("Dotación", len(df_emp))
@@ -216,27 +235,29 @@ if check_password():
                     c3.metric("Faltan/Rechazo", len(df_emp[df_emp['ESTADO_FINAL'] != "✅ OK"]), delta_color="inverse")
                     st.divider()
 
-                # --- EL DETALLE INDIVIDUAL (LO QUE FALTABA) ---
-                st.subheader("🔍 DETALLE INDIVIDUAL COMPLETO")
-                st.info("Lista consolidada de trabajadores de las empresas procesadas.")
+                # --- DETALLE INDIVIDUAL VISUAL ---
+                st.subheader("🔍 MATRIZ DE CUMPLIMIENTO")
+                st.info("Revisa visualmente qué parámetro le falta a cada trabajador.")
                 
-                # Seleccionamos y renombramos columnas para que se vea ordenado
+                # Definimos las columnas y el orden visual
                 columnas_finales = {
                     'Rut': 'RUT',
                     'Apellidos': 'APELLIDOS',
                     'Nombre': 'NOMBRES',
-                    'Contratista': 'EMPRESA',
                     'ESTADO_FINAL': 'ESTADO',
+                    'CHECK_AFP': 'AFP',        # Nuevo
+                    'CHECK_SALUD': 'SALUD',    # Nuevo
+                    'CHECK_AFC': 'AFC',        # Nuevo
+                    'CHECK_MUTUAL': 'MUTUAL',  # Nuevo
                     'BASE IMPONIBLE': 'RENTA IMP.',
-                    'ANÁLISIS MONTOS': 'ANÁLISIS',
                     'OBSERVACIONES': 'OBSERVACIONES',
                     'ARCHIVO': 'ARCHIVO'
                 }
                 
-                # Mostramos la tabla con las columnas que existen
                 cols_a_mostrar = [c for c in columnas_finales.keys() if c in df_filtrado.columns]
                 df_display = df_filtrado[cols_a_mostrar].rename(columns=columnas_finales).fillna("-")
                 
+                # Mostramos la tabla (Streamlit renderizará los emojis)
                 st.dataframe(df_display, use_container_width=True, hide_index=True)
 
                 # Descarga
