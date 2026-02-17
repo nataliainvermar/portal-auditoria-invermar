@@ -1,4 +1,4 @@
-import streamlit as st
+¿import streamlit as st
 import pandas as pd
 import pdfplumber
 import re
@@ -18,6 +18,15 @@ hide_st_style = """
             </style>
             """
 st.markdown(hide_st_style, unsafe_allow_html=True)
+
+# --- FUNCIONES AUXILIARES ---
+def normalize_rut(rut_str):
+    """Limpia el RUT para comparaciones (quita puntos, espacios y deja mayúsculas)"""
+    if not isinstance(rut_str, str):
+        return "SIN_RUT"
+    # Eliminar puntos y espacios, y pasar a mayúsculas
+    clean = rut_str.replace(".", "").replace(" ", "").strip().upper()
+    return clean
 
 # --- SISTEMA DE SEGURIDAD (LOGIN) ---
 def check_password():
@@ -43,9 +52,9 @@ def check_password():
 if check_password():
 
     # 2. MOTOR DE AUDITORÍA
-    def analizar_pdf(archivo_pdf, nombre_archivo_real):
+    def analizar_pdf(archivo_bytes, nombre_archivo_real):
         try:
-            with pdfplumber.open(archivo_pdf) as pdf:
+            with pdfplumber.open(io.BytesIO(archivo_bytes)) as pdf:
                 texto_completo = ""
                 for pagina in pdf.pages:
                     texto_completo += pagina.extract_text() or ""
@@ -100,67 +109,73 @@ if check_password():
 
         return {
             "ARCHIVO": nombre_archivo_real,
-            "TRABAJADOR": trabajador,
+            "TRABAJADOR_PDF": trabajador,
             "RUT": rut_trabajador,
-            "EMPLEADOR": empleador,
+            "EMPLEADOR_PDF": empleador,
             "BASE IMPONIBLE": f"${imponible_valor:,}" if imponible_valor > 0 else "N/A",
             "ANÁLISIS MONTOS": revision_monto,
-            "ESTADO": estado,
+            "ESTADO_PDF": estado,
             "OBSERVACIONES": "CUMPLIMIENTO TOTAL" if estado == "VALIDADO" else f"FALTA: {', '.join(faltas)}"
         }
 
     # 3. INTERFAZ VISUAL
     st.markdown("# PORTAL DE GESTIÓN Y VALIDACIÓN DE DOCUMENTOS")
-    st.write("### Herramienta de Revisión Masiva: Certificados de Cotizaciones Previsionales")
+    st.write("### Herramienta de Revisión Masiva y Cruce de Nómina")
     st.divider()
 
-    archivos = st.file_uploader("Sube aquí los archivos PDF o ZIP", accept_multiple_files=True, type=["pdf", "zip"])
+    # --- SECCIÓN DE CARGA (AHORA CON DOS SUBIDAS) ---
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.info("📂 **PASO 1 (Opcional):** Cargar Nómina")
+        archivo_nomina = st.file_uploader("Subir CSV/Excel de Trabajadores (Pronexo)", type=["csv", "xlsx"])
 
-    if archivos:
-        if st.button("EJECUTAR AUDITORÍA MASIVA", use_container_width=True):
-            datos = []
+    with col2:
+        st.info("📄 **PASO 2:** Cargar Documentos")
+        archivos_pdfs = st.file_uploader("Subir PDFs o ZIP de Cotizaciones", accept_multiple_files=True, type=["pdf", "zip"])
+
+    st.divider()
+
+    if st.button("🚀 EJECUTAR AUDITORÍA Y CRUCE", use_container_width=True):
+        
+        if not archivos_pdfs:
+            st.warning("⚠️ Debes subir al menos los archivos PDF/ZIP para auditar.")
+        else:
+            # 1. PROCESAR PDFs (EXTRACCIÓN)
+            datos_pdf = []
+            with st.spinner('Analizando documentos...'):
+                for arc in archivos_pdfs:
+                    # Leer bytes según tipo
+                    if arc.name.lower().endswith(".pdf"):
+                        datos_pdf.append(analizar_pdf(arc.getvalue(), arc.name))
+                    elif arc.name.lower().endswith(".zip"):
+                        try:
+                            with zipfile.ZipFile(arc) as z:
+                                for nombre_interno in z.namelist():
+                                    if nombre_interno.lower().endswith(".pdf") and not nombre_interno.startswith("__MACOSX"):
+                                        with z.open(nombre_interno) as archivo_zip:
+                                            datos_pdf.append(analizar_pdf(archivo_zip.read(), nombre_interno))
+                        except:
+                            st.error(f"Error al leer ZIP: {arc.name}")
+
+            df_pdfs = pd.DataFrame(datos_pdf)
             
-            for arc in archivos:
-                if arc.name.lower().endswith(".pdf"):
-                    datos.append(analizar_pdf(arc, arc.name))
-                elif arc.name.lower().endswith(".zip"):
+            # Normalizar RUT del PDF para el cruce
+            if not df_pdfs.empty:
+                df_pdfs['RUT_CLEAN'] = df_pdfs['RUT'].apply(normalize_rut)
+
+            # 2. LOGICA DEL CRUCE (SI HAY NÓMINA)
+            if archivo_nomina is not None:
+                try:
+                    # Leemos el CSV saltando las primeras 9 filas (ajuste específico para Pronexo)
                     try:
-                        with zipfile.ZipFile(arc) as z:
-                            for nombre_interno in z.namelist():
-                                if nombre_interno.lower().endswith(".pdf") and not nombre_interno.startswith("__MACOSX"):
-                                    with z.open(nombre_interno) as archivo_zip:
-                                        pdf_bytes = io.BytesIO(archivo_zip.read())
-                                        datos.append(analizar_pdf(pdf_bytes, nombre_interno))
+                        df_nomina = pd.read_csv(archivo_nomina, header=9)
                     except:
-                        st.error(f"Error al leer ZIP: {arc.name}")
+                        df_nomina = pd.read_excel(archivo_nomina, header=9)
 
-            if datos:
-                df_detalle = pd.DataFrame(datos)
-
-                # TABLA 1: RESUMEN
-                st.subheader("📋 RESUMEN POR EMPRESA")
-                resumen = df_detalle.groupby("EMPLEADOR").agg(
-                    Trabajadores=("TRABAJADOR", "count"),
-                    Aprobados=("ESTADO", lambda x: (x == "VALIDADO").sum()),
-                    Rechazados=("ESTADO", lambda x: (x == "RECHAZADO").sum()),
-                    Quien_Falla=("TRABAJADOR", lambda x: ", ".join(df_detalle[(df_detalle['EMPLEADOR'] == x.name) & (df_detalle['ESTADO'] == 'RECHAZADO')]['TRABAJADOR']))
-                ).reset_index()
-                st.dataframe(resumen, use_container_width=True, hide_index=True)
-
-                st.divider()
-
-                # TABLA 2: DETALLE
-                st.subheader("🔍 DETALLE INDIVIDUAL")
-                st.dataframe(df_detalle, use_container_width=True, hide_index=True)
-                
-                # Exportación
-                csv = df_detalle.to_csv(index=False).encode('utf-8')
-                st.download_button("📥 DESCARGAR REPORTE EXCEL", data=csv, file_name="Auditoria_Invermar.csv")
-            else:
-                st.warning("No se encontraron archivos PDF válidos.")
-
-    with st.sidebar:
-        st.write(f"Fecha: {datetime.now().strftime('%d/%m/%Y')}")
-        if st.button("Cerrar Sesión"):
-            st.session_state["password_correct"] = False
-            st.rerun()
+                    # Limpieza básica de la nómina
+                    if 'Rut' in df_nomina.columns and 'Contratista' in df_nomina.columns:
+                        df_nomina['RUT_CLEAN'] = df_nomina['Rut'].apply(normalize_rut)
+                        
+                        # --- EL CRUCE MAESTRO (LEFT JOIN) ---
+                        # Unimos la Nómina (Izquierda) con los PDFs encontrados (Derecha) usando el RUT
