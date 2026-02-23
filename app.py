@@ -7,29 +7,19 @@ import zipfile
 import io
 
 # -----------------------------------------------------------------------------
-# 1. CONFIGURACIÓN DE PÁGINA (ESTO CONTROLA LA VISTA PREVIA DEL LINK)
+# 1. CONFIGURACIÓN DE PÁGINA
 st.set_page_config(
-    page_title="Invermar | Validador", # Título que saldrá en WhatsApp
-    page_icon="✅",                                    # Ícono profesional (Check verde)
+    page_title="Invermar | Validador", 
+    page_icon="✅",                                     
     layout="wide",
-    initial_sidebar_state="collapsed",                 # Oculta la barra lateral al inicio (más limpio)
+    initial_sidebar_state="collapsed",                 
     menu_items={
-        'About': "Portal de Validación Documental - Departamento de Subcontratación" # Descripción interna
+        'About': "Portal de Validación Documental - Departamento de Subcontratación"
     }
 )
 # -----------------------------------------------------------------------------
 
-# CÓDIGO PARA OCULTAR EL MENÚ Y EL BOTÓN DE GITHUB (Sigue igual)
-hide_st_style = """
-            <style>
-            #MainMenu {visibility: hidden;}
-            footer {visibility: hidden;}
-            header {visibility: hidden;}
-            </style>
-            """
-st.markdown(hide_st_style, unsafe_allow_html=True)
-
-# ESTILOS (Ocultar menú)
+# CÓDIGO PARA OCULTAR EL MENÚ
 hide_st_style = """
             <style>
             #MainMenu {visibility: hidden;}
@@ -77,7 +67,7 @@ if check_password():
         except:
             return {
                 "ARCHIVO": nombre_archivo_real, "ESTADO_PDF": "ERROR", "OBSERVACIONES": "Ilegible", "RUT_PDF": "",
-                "CHECK_AFP": "❓", "CHECK_SALUD": "❓", "CHECK_AFC": "❓", "CHECK_MUTUAL": "❓"
+                "CHECK_AFP": "❓", "CHECK_SALUD": "❓", "CHECK_AFC": "❓", "CHECK_MUTUAL": "❓", "PERIODO": "❓"
             }
                 
         texto_upper = texto_completo.upper()
@@ -105,6 +95,22 @@ if check_password():
                 if fin != -1: empleador = texto_upper[inicio:fin].replace(":", "").strip()
             except: pass
 
+        # --- EXTRACCIÓN DE PERIODO (NUEVO) ---
+        periodo_detectado = "NO DETECTADO"
+        try:
+            # Busca meses comunes y año (ej: ENERO 2026, ENERO DE 2026)
+            meses = ["ENERO", "FEBRERO", "MARZO", "ABRIL", "MAYO", "JUNIO", "JULIO", "AGOSTO", "SEPTIEMBRE", "OCTUBRE", "NOVIEMBRE", "DICIEMBRE"]
+            pattern_mes = r'\b(' + '|'.join(meses) + r')\s+(?:DE\s+)?(20\d{2})\b'
+            match_periodo = re.search(pattern_mes, texto_upper)
+            
+            if match_periodo:
+                periodo_detectado = f"{match_periodo.group(1)} {match_periodo.group(2)}"
+            else:
+                # Intento secundario formato numérico (ej: 01-2026)
+                match_num = re.search(r'(\d{2}-\d{4})', texto_upper)
+                if match_num: periodo_detectado = match_num.group(1)
+        except: pass
+
         imponible_valor = 0
         try:
             montos = re.findall(r'\$\s*(\d+\.?\d+\.?\d+)', texto_upper)
@@ -117,19 +123,15 @@ if check_password():
         except: pass
 
         # --- VERIFICACIÓN VISUAL (LOS CHECKS) ---
-        # 1. AFP
         tiene_afp = any(x in texto_upper for x in ["PROVIDA", "MODELO", "HABITAT", "CUPRUM", "COTIZACION", "UNO"])
         icon_afp = "✅" if tiene_afp else "❌"
 
-        # 2. SALUD
         tiene_salud = "FONASA" in texto_upper or "ISAPRE" in texto_upper
         icon_salud = "✅" if tiene_salud else "❌"
 
-        # 3. AFC (Seguro Cesantía)
         tiene_afc = "AFC" in texto_upper or "CESANTIA" in texto_upper
         icon_afc = "✅" if tiene_afc else "❌"
 
-        # 4. MUTUAL (Seguro Accidentes)
         tiene_mutual = "ACHS" in texto_upper or "MUTUAL" in texto_upper or "ISL" in texto_upper
         icon_mutual = "✅" if tiene_mutual else "❌"
         
@@ -148,6 +150,7 @@ if check_password():
             "TRABAJADOR_PDF": trabajador,
             "RUT_PDF": rut_pdf,
             "EMPLEADOR_PDF": empleador,
+            "PERIODO": periodo_detectado,  # <--- NUEVO CAMPO AGREGADO AL RETURN
             "BASE IMPONIBLE": f"${imponible_valor:,}" if imponible_valor > 0 else "N/A",
             "ANÁLISIS MONTOS": revision_monto,
             "ESTADO_PDF": estado,
@@ -259,16 +262,17 @@ if check_password():
                 st.subheader("🔍 MATRIZ DE CUMPLIMIENTO")
                 st.info("Revisa visualmente qué parámetro le falta a cada trabajador.")
                 
-                # Definimos las columnas y el orden visual
+                # Definimos las columnas y el orden visual (SE AGREGÓ PERIODO)
                 columnas_finales = {
                     'Rut': 'RUT',
                     'Apellidos': 'APELLIDOS',
                     'Nombre': 'NOMBRES',
                     'ESTADO_FINAL': 'ESTADO',
-                    'CHECK_AFP': 'AFP',        # Nuevo
-                    'CHECK_SALUD': 'SALUD',    # Nuevo
-                    'CHECK_AFC': 'AFC',        # Nuevo
-                    'CHECK_MUTUAL': 'MUTUAL',  # Nuevo
+                    'CHECK_AFP': 'AFP',
+                    'CHECK_SALUD': 'SALUD',
+                    'CHECK_AFC': 'AFC',
+                    'CHECK_MUTUAL': 'MUTUAL',
+                    'PERIODO': 'PERIODO',           # <--- NUEVA COLUMNA EN LA TABLA
                     'BASE IMPONIBLE': 'RENTA IMP.',
                     'OBSERVACIONES': 'OBSERVACIONES',
                     'ARCHIVO': 'ARCHIVO'
@@ -277,7 +281,7 @@ if check_password():
                 cols_a_mostrar = [c for c in columnas_finales.keys() if c in df_filtrado.columns]
                 df_display = df_filtrado[cols_a_mostrar].rename(columns=columnas_finales).fillna("-")
                 
-                # Mostramos la tabla (Streamlit renderizará los emojis)
+                # Mostramos la tabla
                 st.dataframe(df_display, use_container_width=True, hide_index=True)
 
                 # Descarga
